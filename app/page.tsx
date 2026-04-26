@@ -249,17 +249,6 @@ export default function Home() {
       {/* Input */}
       <div className="bg-white border-t shadow-lg p-4">
         <div className="max-w-4xl mx-auto flex gap-3">
-     // Current (single line input)
-<input
-  type="text"
-  value={input}
-  onChange={(e) => setInput(e.target.value)}
-  onKeyPress={handleKeyPress}
-  placeholder="What do you need to do today? 🤔"
-  className="flex-1 px-5 py-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-/>
-
-// Replace with THIS (multi-line textarea)
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
