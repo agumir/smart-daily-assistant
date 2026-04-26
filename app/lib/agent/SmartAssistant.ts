@@ -1,38 +1,13 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { 
-  Task, 
-  ActionPlan, 
-  GoalAnalysis, 
-  AgentResponse,
-  ConversationMessage,
-  UserContext 
-} from './types';
-import {
-  SYSTEM_PROMPT,
-  GOAL_ANALYSIS_PROMPT,
-  TASK_EXTRACTION_PROMPT,
-  ACTION_PLAN_PROMPT,
-  RESPONSE_GENERATION_PROMPT
-} from './prompts';
+// lib/agent/SmartAssistant.ts - COMPLETE FIXED VERSION
+
+import { Task, ActionPlan, AgentResponse, UserContext, ConversationMessage } from './types';
 
 export class SmartAssistant {
-  private gemini: GoogleGenerativeAI;
-  private model: any;
   private userContexts: Map<string, UserContext> = new Map();
 
   constructor(apiKey: string) {
-    if (!apiKey || apiKey === 'your_gemini_api_key_here') {
-      throw new Error('Valid GEMINI_API_KEY is required');
-    }
-    this.gemini = new GoogleGenerativeAI(apiKey);
-    this.model = this.gemini.getGenerativeModel({ 
-      model: 'gemini-1.5-flash',
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 1024,
-        topP: 0.9,
-      }
-    });
+    // API key kept for compatibility but not actively used
+    console.log('SmartAssistant initialized (clean manual mode)');
   }
 
   private getUserContext(userId: string): UserContext {
@@ -46,129 +21,59 @@ export class SmartAssistant {
     return this.userContexts.get(userId)!;
   }
 
-  private async callGemini(prompt: string, systemPrompt?: string): Promise<string> {
-    const fullPrompt = systemPrompt 
-      ? `${systemPrompt}\n\n${prompt}`
-      : prompt;
-    
-    const result = await this.model.generateContent(fullPrompt);
-    const response = await result.response;
-    return response.text();
-  }
-
   private isGreeting(message: string): boolean {
     const greetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening'];
     const lowerMessage = message.toLowerCase().trim();
     const words = lowerMessage.split(/\s+/);
-    if (words.length <= 3) {
+    if (words.length <= 2) {
       return greetings.some(greeting => lowerMessage.includes(greeting));
     }
     return false;
   }
 
   private getGreetingResponse(): string {
-    return "Hello! I'm your Smart Daily Assistant.\n\nReady to get organized? Tell me what you need to accomplish today, and I'll help you extract tasks, prioritize them, and create an action plan.\n\nTry saying: 'I need to finish a report, buy groceries, and call the doctor'";
+    return "Hello! I'm your Smart Daily Assistant.\n\nTell me what you need to accomplish today, and I'll help you extract tasks, prioritize them, and create an action plan.\n\nTry saying: 'I need to finish a report, buy groceries, and call the doctor'";
   }
 
-  private async analyzeGoal(message: string): Promise<GoalAnalysis> {
-    const prompt = GOAL_ANALYSIS_PROMPT.replace('{{message}}', message);
-    
-    try {
-      const response = await this.callGemini(prompt);
-      const cleanResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      return JSON.parse(cleanResponse);
-    } catch (error) {
-      return {
-        goal: message,
-        missingInfo: [],
-        followUpQuestion: null,
-        confidence: 0.5,
-      };
-    }
-  }
-
-  private async extractTasks(message: string): Promise<Task[]> {
-    const prompt = TASK_EXTRACTION_PROMPT.replace('{{message}}', message);
-    
-    try {
-      const response = await this.callGemini(prompt);
-      const cleanResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      const tasks = JSON.parse(cleanResponse);
-      
-      return tasks.map((t: any, i: number) => ({
-        id: `task-${Date.now()}-${i}`,
-        title: t.title,
-        priority: t.priority || 'medium',
-        dueDate: t.dueDate,
-        completed: false,
-        estimatedMinutes: t.estimatedMinutes,
-      }));
-    } catch (error) {
+  // Manual task splitting - NO AI, NO old format
+  private splitTasksManually(message: string): string[] {
+    // Don't split short responses
+    if (message.toLowerCase() === 'yes' || message.toLowerCase() === 'no' || message.toLowerCase() === 'ok' || message.length < 5) {
       return [];
     }
-  }
-
-  private prioritizeTasks(tasks: Task[]): Task[] {
-    const priorityOrder = { high: 3, medium: 2, low: 1 };
-    return [...tasks].sort((a, b) => {
-      const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
-      if (priorityDiff !== 0) return priorityDiff;
-      if (a.dueDate && !b.dueDate) return -1;
-      if (!a.dueDate && b.dueDate) return 1;
-      return 0;
-    });
-  }
-
-  private async createActionPlan(goal: string, tasks: Task[]): Promise<ActionPlan> {
-    const tasksSummary = tasks.map(t => `${t.title} (${t.priority} priority)`).join(', ');
-    const prompt = ACTION_PLAN_PROMPT
-      .replace('{{goal}}', goal)
-      .replace('{{tasks}}', tasksSummary);
     
-    try {
-      const response = await this.callGemini(prompt);
-      const cleanResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      const plan = JSON.parse(cleanResponse);
+    let tasks: string[] = [];
+    
+    // Split by commas, "and", "&"
+    const parts = message.split(/[,，]|\s+and\s+|\s*&\s*/i);
+    
+    for (let part of parts) {
+      let cleaned = part.trim();
+      // Remove common prefixes
+      cleaned = cleaned.replace(/^(i need to|i have to|please|remember to|to)\s+/i, '');
+      cleaned = cleaned.replace(/^my tasks?:?\s*/i, '');
+      cleaned = cleaned.replace(/^[•\-*]\s*/, '');
+      cleaned = cleaned.replace(/^plan my day:\s*/i, '');
       
-      return {
-        ...plan,
-        prioritizedTasks: tasks,
-      };
-    } catch (error) {
-      return {
-        goal: goal,
-        steps: ['Review your tasks', 'Prioritize what matters most', 'Take action'],
-        prioritizedTasks: tasks,
-      };
-    }
-  }
-
-  private async generateResponse(message: string, actionPlan: ActionPlan | null, tasks: Task[]): Promise<string> {
-    const planStr = actionPlan ? JSON.stringify({
-      goal: actionPlan.goal,
-      steps: actionPlan.steps,
-      estimatedTime: actionPlan.estimatedTime,
-    }) : 'null';
-    
-    const prompt = RESPONSE_GENERATION_PROMPT
-      .replace('{{message}}', message)
-      .replace('{{actionPlan}}', planStr);
-    
-    try {
-      const response = await this.callGemini(prompt, SYSTEM_PROMPT);
-      return response;
-    } catch (error) {
-      if (tasks.length === 0) {
-        return "I'm here to help you organize your day. Could you tell me what tasks you need to accomplish?";
+      if (cleaned.length > 0 && cleaned.length < 100 && cleaned.length < message.length * 0.8) {
+        tasks.push(cleaned.charAt(0).toUpperCase() + cleaned.slice(1));
       }
-      
-      const taskList = tasks.map(t => {
-        const priorityText = t.priority === 'high' ? '[High]' : t.priority === 'medium' ? '[Medium]' : '[Low]';
-        return `${priorityText} ${t.title}`;
-      }).join('\n');
-      
-      return `I understand you need to complete these tasks:\n\n${taskList}\n\nWould you like me to help prioritize them or create an action plan?`;
     }
+    
+    // Remove duplicates
+    tasks = [...new Set(tasks)];
+    
+    // If we got multiple tasks, return them
+    if (tasks.length >= 2) {
+      return tasks;
+    }
+    
+    // If only one task but it's reasonably sized
+    if (tasks.length === 1 && tasks[0].length > 3) {
+      return tasks;
+    }
+    
+    return [];
   }
 
   async processMessage(
@@ -176,6 +81,7 @@ export class SmartAssistant {
     userId: string = 'default',
     conversationHistory?: ConversationMessage[]
   ): Promise<AgentResponse> {
+    // Handle greetings
     if (this.isGreeting(message)) {
       return {
         message: this.getGreetingResponse(),
@@ -184,53 +90,78 @@ export class SmartAssistant {
       };
     }
     
-    const context = this.getUserContext(userId);
-    if (conversationHistory) {
-      context.conversationHistory = conversationHistory;
-    }
-    context.conversationHistory.push({
-      role: 'user',
-      content: message,
-      timestamp: new Date(),
-    });
-
-    const goalAnalysis = await this.analyzeGoal(message);
-    
-    if (goalAnalysis.missingInfo.length > 0 && goalAnalysis.confidence < 0.7) {
-      const responseMessage = await this.generateResponse(message, null, []);
-      
-      const response: AgentResponse = {
-        message: responseMessage,
-        needsClarification: true,
-        followUpQuestion: goalAnalysis.followUpQuestion || undefined,
-        missingInfo: goalAnalysis.missingInfo,
+    // Handle short responses like "yes"
+    if (message.toLowerCase() === 'yes' || message.toLowerCase() === 'no' || message.toLowerCase() === 'ok' || message.length < 3) {
+      return {
+        message: "Just send me your tasks and I'll help organize them. For example: 'I need to finish a report, buy groceries, and call the doctor'",
+        needsClarification: false,
+        tasks: [],
       };
-      
-      context.conversationHistory.push({
-        role: 'assistant',
-        content: response.message,
-        timestamp: new Date(),
-      });
-      
-      return response;
     }
     
-    let tasks = await this.extractTasks(message);
+    // Try to split tasks manually
+    const manualTasks = this.splitTasksManually(message);
     
-    if (tasks.length === 0) {
+    let tasks: Task[] = [];
+    
+    if (manualTasks.length >= 1) {
+      // Use manually split tasks
+      tasks = manualTasks.map((title, i) => ({
+        id: `task-${Date.now()}-${i}`,
+        title: title,
+        priority: i === 0 ? 'high' : i === 1 ? 'medium' : 'low',
+        completed: false,
+      }));
+    } else {
+      // Use original message as single task
+      let cleaned = message.trim();
+      cleaned = cleaned.replace(/^(i need to|i have to|please|remember to|to)\s+/i, '');
+      cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+      
       tasks = [{
         id: `task-${Date.now()}`,
-        title: goalAnalysis.goal,
+        title: cleaned,
         priority: 'medium',
         completed: false,
       }];
     }
     
-    const prioritizedTasks = this.prioritizeTasks(tasks);
-    const actionPlan = await this.createActionPlan(goalAnalysis.goal, prioritizedTasks);
-    const responseMessage = await this.generateResponse(message, actionPlan, prioritizedTasks);
+    // Prioritize tasks
+    const prioritizedTasks = [...tasks].sort((a, b) => {
+      const order = { high: 3, medium: 2, low: 1 };
+      return order[b.priority] - order[a.priority];
+    });
     
+    // Build clean response message - NO "Medium" prefix, NO "I understand"
+    let responseMessage = '';
+    responseMessage += `Goal: Complete your ${tasks.length} pending tasks\n\n`;
+    responseMessage += `Tasks to complete:\n`;
+    tasks.forEach((task, i) => {
+      const priorityLabel = task.priority === 'high' ? 'High Priority' : task.priority === 'medium' ? 'Medium Priority' : 'Low Priority';
+      responseMessage += `${i + 1}. ${task.title} [${priorityLabel}]\n`;
+    });
+    responseMessage += `\nPriority:\n`;
+    responseMessage += `- High: ${tasks[0].title} - Urgent, do this first\n`;
+    if (tasks[1]) responseMessage += `- Medium: ${tasks[1].title} - Important, schedule soon\n`;
+    if (tasks[2]) responseMessage += `- Low: ${tasks[2].title} - Flexible, no rush\n`;
+    responseMessage += `\nAction Plan:\n`;
+    responseMessage += `- Today: ${tasks[0].title}\n`;
+    if (tasks[1]) responseMessage += `- Tomorrow: ${tasks[1].title}\n`;
+    if (tasks[2]) responseMessage += `- Later: ${tasks[2].title}\n`;
+    responseMessage += `\nPro Tip: Start with "${tasks[0].title}" first thing.\n\n`;
+    responseMessage += `You've got this!`;
+    
+    // Save to context
+    const context = this.getUserContext(userId);
+    if (conversationHistory) {
+      context.conversationHistory = conversationHistory;
+    }
     context.savedTasks.push(...prioritizedTasks);
+    context.conversationHistory.push({
+      role: 'user',
+      content: message,
+      timestamp: new Date(),
+    });
     context.conversationHistory.push({
       role: 'assistant',
       content: responseMessage,
@@ -239,8 +170,12 @@ export class SmartAssistant {
     
     return {
       message: responseMessage,
-      actionPlan,
       tasks: prioritizedTasks,
+      actionPlan: {
+        goal: `Complete ${tasks.length} tasks`,
+        steps: tasks.map(t => t.title),
+        prioritizedTasks: prioritizedTasks,
+      },
       needsClarification: false,
     };
   }
@@ -281,11 +216,7 @@ let assistantInstance: SmartAssistant | null = null;
 
 export function getAssistant(apiKey?: string): SmartAssistant {
   if (!assistantInstance) {
-    const key = apiKey || process.env.GEMINI_API_KEY;
-    if (!key) {
-      throw new Error('GEMINI_API_KEY is not configured');
-    }
-    assistantInstance = new SmartAssistant(key);
+    assistantInstance = new SmartAssistant(apiKey || '');
   }
   return assistantInstance;
 }
