@@ -11,7 +11,7 @@ This project demonstrates **AI agent design, secure API integration, and multi-p
 | Platform | Link |
 |----------|------|
 | 🌐 Web App (Vercel) | **[https://smart-daily-assistant.vercel.app](https://smart-daily-assistant.vercel.app)** |
-| 🤖 Telegram Bot | **[@SmartDailyAssistantBot](https://t.me/SmartDailyAssistantBot)** |
+| 🤖 Telegram Bot | **[@SmartDailyAssistantV1_bot](https://t.me/SmartDailyAssistantV1_bot)** |
 | 📦 GitHub Repo | **[https://github.com/agumir/smart-daily-assistant](https://github.com/agumir/smart-daily-assistant)** |
 
 ---
