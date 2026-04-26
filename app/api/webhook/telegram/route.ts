@@ -6,8 +6,8 @@ import {
   formatTelegramResponse,
   getWelcomeMessage,
   Task 
-} from '../../../lib/telegram/bot';  // ✅ Fixed relative path
-import { getAssistant } from '../../../lib/agent/SmartAssistant';  // ✅ Fixed relative path
+} from '../../../lib/telegram/bot';
+import { getAssistant } from '../../../lib/agent/SmartAssistant';
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,17 +34,17 @@ export async function POST(req: NextRequest) {
       // Handle /help command
       if (userText === '/help') {
         await sendTelegramMessage(botToken, chatId, 
-          "📋 *Smart Daily Assistant Help*\n\n" +
+          "Smart Daily Assistant Help\n\n" +
           "Just send me your tasks and I'll help organize them!\n\n" +
-          "*Commands:*\n" +
+          "Commands:\n" +
           "/start - Welcome message\n" +
           "/help - This help text\n" +
           "/tasks - View your current tasks\n" +
           "/clear - Clear conversation history\n\n" +
-          "*Examples:*\n" +
-          "• 'I need to finish report, buy milk, and call mom'\n" +
-          "• 'Plan my day: gym at 9am, meeting at 2pm'\n" +
-          "• 'Study for exam tomorrow, it's urgent'"
+          "Examples:\n" +
+          "- I need to finish report, buy milk, and call mom\n" +
+          "- Plan my day: gym at 9am, meeting at 2pm\n" +
+          "- Study for exam tomorrow, it's urgent"
         );
         return NextResponse.json({ ok: true });
       }
@@ -52,19 +52,19 @@ export async function POST(req: NextRequest) {
       // Handle /tasks command
       if (userText === '/tasks') {
         const assistant = getAssistant(process.env.GEMINI_API_KEY);
-        const tasks: Task[] = assistant.getUserTasks(chatId.toString());  // ✅ Added type
+        const tasks: Task[] = assistant.getUserTasks(chatId.toString());
         
         if (tasks.length === 0) {
           await sendTelegramMessage(botToken, chatId, 
-            "📭 You don't have any pending tasks. Send me what you need to do!"
+            "You don't have any pending tasks. Send me what you need to do!"
           );
         } else {
-          let taskList = "📋 *Your Tasks:*\n\n";
-          tasks.forEach((task: Task, idx: number) => {  // ✅ Added types
-            const emoji = task.priority === 'high' ? '🔴' : task.priority === 'medium' ? '🟡' : '🟢';
-            taskList += `${idx + 1}. ${emoji} ${task.title}\n`;
+          let taskList = "Your Tasks:\n\n";
+          tasks.forEach((task: Task, idx: number) => {
+            const priorityLabel = task.priority === 'high' ? 'High' : task.priority === 'medium' ? 'Medium' : 'Low';
+            taskList += `${idx + 1}. [${priorityLabel}] ${task.title}\n`;
             if (task.dueDate) {
-              taskList += `   ⏰ Due: ${task.dueDate}\n`;
+              taskList += `   Due: ${task.dueDate}\n`;
             }
           });
           await sendTelegramMessage(botToken, chatId, taskList);
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
         const assistant = getAssistant(process.env.GEMINI_API_KEY);
         await assistant.clearConversation(chatId.toString());
         await sendTelegramMessage(botToken, chatId, 
-          "🗑️ Conversation history cleared! Start fresh by telling me what you need to do."
+          "Conversation history cleared! Start fresh by telling me what you need to do."
         );
         return NextResponse.json({ ok: true });
       }
