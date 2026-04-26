@@ -58,6 +58,58 @@ export class SmartAssistant {
     return response.text();
   }
 
+  // ========== GREETING DETECTION ==========
+  
+  private isGreeting(message: string): boolean {
+    const greetings = [
+      'hello', 'hi', 'hey', 'greetings', 
+      'good morning', 'good afternoon', 'good evening', 
+      'how are you', "what's up", 'yo', 'sup',
+      'hola', 'namaste', 'bonjour'
+    ];
+    const lowerMessage = message.toLowerCase().trim();
+    
+    // If message is very short (1-4 words) and contains a greeting
+    const words = lowerMessage.split(/\s+/);
+    if (words.length <= 4) {
+      return greetings.some(greeting => lowerMessage.includes(greeting));
+    }
+    
+    return false;
+  }
+
+  private getGreetingResponse(): string {
+    const greetings = [
+      `👋 **Hello! I'm your Smart Daily Assistant.**
+
+Ready to get organized? Tell me what you need to accomplish today, and I'll help you:
+• Extract tasks from your messages
+• Prioritize what matters most
+• Create simple action plans
+
+💪 **Try saying:** "I need to finish a report, buy groceries, and call the doctor"`,
+
+      `✨ **Hey there! Ready to crush your tasks today?**
+
+Just tell me what's on your to-do list, and I'll help you prioritize and plan.
+
+💪 **Try:** "Study for exam tomorrow, it's urgent"`,
+
+      `🌟 **Hi! Welcome back to your Smart Daily Assistant.**
+
+When you're ready, share your tasks and I'll help you:
+• Break them down into manageable steps
+• Prioritize by urgency
+• Create a realistic action plan
+
+💪 **Try:** "Plan my day: workout at 9am, meeting at 2pm, dinner at 7pm"`
+    ];
+    
+    return greetings[Math.floor(Math.random() * greetings.length)];
+  }
+
+  // ========== CORE ANALYSIS METHODS ==========
+
   private async analyzeGoal(message: string): Promise<GoalAnalysis> {
     const prompt = GOAL_ANALYSIS_PROMPT.replace('{{message}}', message);
     
@@ -134,6 +186,8 @@ export class SmartAssistant {
       };
     }
   }
+
+  // ========== HELPER METHODS ==========
 
   private detectQuickWins(tasks: Task[]): Task | null {
     const quickKeywords = ['call', 'email', 'text', 'reply', 'pay', 'order', 'buy', 'water', 'remind'];
@@ -256,11 +310,43 @@ ${quickWinSection}
 Would you like me to create a detailed action plan? 💪`;
   }
 
+  private getClarificationMessage(missingInfo: string[], followUpQuestion: string | null): string {
+    if (followUpQuestion) {
+      return `🤔 ${followUpQuestion}`;
+    }
+    
+    if (missingInfo.includes('deadline') || missingInfo.includes('due date')) {
+      return "📅 When do you need to complete these tasks? Knowing the deadline helps me prioritize better.";
+    }
+    
+    if (missingInfo.includes('priority')) {
+      return "⚡ Which of these tasks is most urgent? Let me know so I can help you prioritize.";
+    }
+    
+    if (missingInfo.includes('specifics')) {
+      return "Could you provide a bit more detail about what you'd like to accomplish? The more specific you are, the better I can help!";
+    }
+    
+    return "I want to help you effectively! Could you tell me more about what you're trying to achieve today?";
+  }
+
+  // ========== MAIN PROCESS METHOD ==========
+
   async processMessage(
     message: string, 
     userId: string = 'default',
     conversationHistory?: ConversationMessage[]
   ): Promise<AgentResponse> {
+    // 🚨 STEP 1: Check for greetings FIRST
+    if (this.isGreeting(message)) {
+      return {
+        message: this.getGreetingResponse(),
+        needsClarification: false,
+        tasks: [],
+      };
+    }
+    
+    // Update context for non-greeting messages
     const context = this.getUserContext(userId);
     if (conversationHistory) {
       context.conversationHistory = conversationHistory;
@@ -337,6 +423,8 @@ Would you like me to create a detailed action plan? 💪`;
     };
   }
 
+  // ========== USER TASK MANAGEMENT ==========
+
   async clearConversation(userId: string): Promise<void> {
     this.userContexts.delete(userId);
   }
@@ -370,7 +458,8 @@ Would you like me to create a detailed action plan? 💪`;
   }
 }
 
-// Singleton instance for reuse across API routes
+// ========== SINGLETON INSTANCE ==========
+
 let assistantInstance: SmartAssistant | null = null;
 
 export function getAssistant(apiKey?: string): SmartAssistant {

@@ -249,16 +249,32 @@ export default function Home() {
       {/* Input */}
       <div className="bg-white border-t shadow-lg p-4">
         <div className="max-w-4xl mx-auto flex gap-3">
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="What do you need to do today? 🤔"
-            className="flex-1 px-5 py-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-            disabled={isLoading}
-          />
+     // Current (single line input)
+<input
+  type="text"
+  value={input}
+  onChange={(e) => setInput(e.target.value)}
+  onKeyPress={handleKeyPress}
+  placeholder="What do you need to do today? 🤔"
+  className="flex-1 px-5 py-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+/>
+
+// Replace with THIS (multi-line textarea)
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              placeholder="What do you need to do today? 🤔
+            💡 Try: I need to finish my project report, buy groceries, and call the doctor
+            💡 Or paste a whole paragraph from your email or notes!"
+              className="flex-1 px-5 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[60px] max-h-[200px]"
+              rows={2}
+            />
           <button
             onClick={sendMessage}
             disabled={isLoading || !input.trim()}
