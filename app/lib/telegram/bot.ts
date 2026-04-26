@@ -79,54 +79,40 @@ export async function sendTypingAction(botToken: string, chatId: number): Promis
   }
 }
 
+// Clean formatter - just pass through the AI's response (no emojis)
 export function formatTelegramResponse(response: {
   message: string;
   tasks?: Task[];
   actionPlan?: ActionPlan;
 }): string {
-  let formatted = response.message;
-  
-  if (response.tasks && response.tasks.length > 0) {
-    formatted += '\n\n📌 *Tasks:*\n';
-    response.tasks.forEach((task: Task, idx: number) => {  // ✅ Added types: task: Task, idx: number
-      const emoji = task.priority === 'high' ? '🔴' : task.priority === 'medium' ? '🟡' : '🟢';
-      formatted += `${emoji} ${task.title}\n`;
-      if (task.dueDate) {
-        formatted += `   ⏰ Due: ${task.dueDate}\n`;
-      }
-    });
-  }
-  
-  if (response.actionPlan && response.actionPlan.steps?.length > 0) {
-    formatted += '\n🎯 *Action Plan:*\n';
-    response.actionPlan.steps.forEach((step: string, idx: number) => {  // ✅ Added types: step: string, idx: number
-      formatted += `${idx + 1}. ${step}\n`;
-    });
-    if (response.actionPlan.estimatedTime) {
-      formatted += `\n⏱️ Estimated: ${response.actionPlan.estimatedTime}`;
-    }
-  }
-  
-  return formatted;
+  // Return the message exactly as SmartAssistant formatted it
+  return response.message;
 }
 
+// Clean welcome message without emojis
 export function getWelcomeMessage(): string {
-  return `👋 *Welcome to Smart Daily Assistant!*
+  return `Hello! Welcome to Smart Daily Assistant!
 
 I'm your AI-powered task organizer. Here's what I can help you with:
 
-✅ Extract tasks from your messages
-✅ Prioritize what matters most
-✅ Create simple action plans
-✅ Ask clarifying questions
+- Extract tasks from your messages
+- Prioritize what matters most
+- Create simple action plans
+- Ask clarifying questions
 
-*Try these examples:*
+Try these examples:
 
-📝 "I need to finish the project report, buy groceries, and call the doctor"
+"I need to finish the project report, buy groceries, and call the doctor"
 
-⏰ "Study for exam tomorrow, finish homework by Friday"
+"Study for exam tomorrow, finish homework by Friday"
 
-🎯 "Plan my day: workout, meeting at 2pm, dinner with friends at 7pm"
+"Plan my day: workout, meeting at 2pm, dinner with friends at 7pm"
 
-Just send me your tasks, and I'll help you get organized! 🚀`;
+Commands:
+/start - Welcome message
+/help - Show this help
+/tasks - View your current tasks
+/clear - Clear conversation history
+
+Just send me your tasks, and I'll help you get organized!`;
 }
