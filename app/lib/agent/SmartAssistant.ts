@@ -1,3 +1,5 @@
+// lib/agent/SmartAssistant.ts
+
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { 
   Task, 
@@ -61,7 +63,6 @@ export class SmartAssistant {
     
     try {
       const response = await this.callGemini(prompt);
-      // Clean response - remove markdown code blocks if present
       const cleanResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '');
       return JSON.parse(cleanResponse);
     } catch (error) {
@@ -103,7 +104,6 @@ export class SmartAssistant {
       const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
       if (priorityDiff !== 0) return priorityDiff;
       
-      // If same priority, tasks with due dates come first
       if (a.dueDate && !b.dueDate) return -1;
       if (!a.dueDate && b.dueDate) return 1;
       return 0;
@@ -135,29 +135,104 @@ export class SmartAssistant {
     }
   }
 
-  private async generateResponse(message: string, actionPlan: ActionPlan | null, tasks: Task[]): Promise<string> {
-    const planStr = actionPlan ? JSON.stringify({
-      goal: actionPlan.goal,
-      steps: actionPlan.steps,
-      estimatedTime: actionPlan.estimatedTime,
-    }) : 'null';
+  private detectQuickWins(tasks: Task[]): Task | null {
+    const quickKeywords = ['call', 'email', 'text', 'reply', 'pay', 'order', 'buy', 'water', 'remind'];
     
-    const prompt = RESPONSE_GENERATION_PROMPT
-      .replace('{{message}}', message)
-      .replace('{{actionPlan}}', planStr);
+    return tasks.find(t => 
+      quickKeywords.some(keyword => 
+        t.title.toLowerCase().includes(keyword)
+      ) || (t.estimatedMinutes && t.estimatedMinutes <= 10)
+    ) || null;
+  }
+
+  private hasOverdueTasks(tasks: Task[]): boolean {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return tasks.some(t => 
+      t.dueDate && new Date(t.dueDate) < today
+    );
+  }
+
+  private getEncouragementMessage(): string {
+    const encouragements = [
+      "You've got this! 💪",
+      "Making progress every day! ✨",
+      "Small steps lead to big results! 🌟",
+      "Proud of you for staying organized! 🎉",
+      "One task at a time — you're crushing it! 🔥",
+      "Today is your day to win! 🌈",
+      "Keep the momentum going! ⚡",
+      "You're doing amazing! 🌟"
+    ];
+    return encouragements[Math.floor(Math.random() * encouragements.length)];
+  }
+
+  private async generateResponse(
+    message: string, 
+    actionPlan: ActionPlan | null, 
+    tasks: Task[],
+    missingInfo?: string[]
+  ): Promise<string> {
+    const quickWin = this.detectQuickWins(tasks);
+    const hasOverdue = this.hasOverdueTasks(tasks);
+    
+    const prompt = `
+      User message: "${message}"
+      Tasks: ${JSON.stringify(tasks)}
+      Missing info: ${JSON.stringify(missingInfo || [])}
+      Has overdue tasks: ${hasOverdue}
+      Quick win task: ${quickWin ? quickWin.title : 'none'}
+      
+      Follow this EXACT format with warmth and encouragement:
+      
+      🎯 **Goal:**
+      [Clear statement]
+      
+      🧩 **Let's break this down:**
+      [Step-by-step with estimated times]
+      
+      ⚡ **Priority lineup:**
+      - 🔴 High: [tasks] — *urgent reason*
+      - 🟡 Medium: [tasks] — *when to schedule*
+      - 🟢 Low: [tasks] — *flexible*
+      
+      📅 **Your action plan:**
+      - ☀️ Today: [max 3-5 tasks]
+      - 🌙 Next: [tomorrow/this week]
+      - 🗓️ Later: [future tasks]
+      - ✨ Quick win: [fastest task, if exists]
+      
+      💪 **Pro tip:**
+      [One specific, actionable suggestion]
+      
+      ${missingInfo && missingInfo.length > 0 ? '❓ **One quick question:**\n[Single specific question]' : ''}
+      
+      ${!missingInfo || missingInfo.length === 0 ? `Keep crushing it! ${this.getEncouragementMessage()}` : ''}
+      
+      Use 3-4 emojis max. Be warm but focused. Never skip sections.
+    `;
     
     try {
       const response = await this.callGemini(prompt, SYSTEM_PROMPT);
       return response;
     } catch (error) {
       console.error('Response generation failed:', error);
-      return this.getFallbackResponse(tasks);
+      return this.getSweetFallbackResponse(tasks, quickWin);
     }
   }
 
-  private getFallbackResponse(tasks: Task[]): string {
+  private getSweetFallbackResponse(tasks: Task[], quickWin: Task | null): string {
     if (tasks.length === 0) {
-      return "I'm here to help you organize your day! Could you tell me what tasks you need to accomplish?";
+      return `✨ Hi there! I'd love to help you organize your day.
+
+🎯 **Goal:** Create your personalized task plan
+
+💪 **Pro tip:** Try telling me something like:
+• "I need to finish a report, buy groceries, and call my mom"
+• "Study for exam tomorrow, it's urgent"
+
+❓ **One quick question:** What's the most important thing on your mind today?`;
     }
     
     const taskList = tasks.map(t => {
@@ -165,7 +240,20 @@ export class SmartAssistant {
       return `${emoji} ${t.title}`;
     }).join('\n');
     
-    return `📋 Here's what I understand you need to do:\n\n${taskList}\n\nWould you like me to help prioritize these or create an action plan?`;
+    const quickWinSection = quickWin ? `\n\n✨ **Quick win:** ${quickWin.title} (takes ~10 min!)` : '';
+    
+    return `🎯 **Goal:** Complete your pending tasks
+
+🧩 **Let's break this down:**
+${taskList}
+
+📅 **Your action plan:**
+- ☀️ Today: Start with the highest priority task
+${quickWinSection}
+
+💪 **Pro tip:** Break large tasks into 25-minute focused chunks (Pomodoro style!)
+
+Would you like me to create a detailed action plan? 💪`;
   }
 
   async processMessage(
@@ -173,7 +261,6 @@ export class SmartAssistant {
     userId: string = 'default',
     conversationHistory?: ConversationMessage[]
   ): Promise<AgentResponse> {
-    // Update context
     const context = this.getUserContext(userId);
     if (conversationHistory) {
       context.conversationHistory = conversationHistory;
@@ -189,8 +276,15 @@ export class SmartAssistant {
     
     // Phase 2: Check if clarification needed
     if (goalAnalysis.missingInfo.length > 0 && goalAnalysis.confidence < 0.7) {
+      const responseMessage = await this.generateResponse(
+        message, 
+        null, 
+        [], 
+        goalAnalysis.missingInfo
+      );
+      
       const response: AgentResponse = {
-        message: this.getClarificationMessage(goalAnalysis.missingInfo, goalAnalysis.followUpQuestion),
+        message: responseMessage,
         needsClarification: true,
         followUpQuestion: goalAnalysis.followUpQuestion || undefined,
         missingInfo: goalAnalysis.missingInfo,
@@ -208,9 +302,8 @@ export class SmartAssistant {
     // Phase 3: Extract tasks
     let tasks = await this.extractTasks(message);
     
-    // Phase 4: If no tasks extracted, try a different approach
+    // Phase 4: If no tasks extracted, infer from goal
     if (tasks.length === 0) {
-      // Try to infer task from goal
       tasks = [{
         id: `task-${Date.now()}`,
         title: goalAnalysis.goal,
@@ -244,26 +337,6 @@ export class SmartAssistant {
     };
   }
 
-  private getClarificationMessage(missingInfo: string[], followUpQuestion: string | null): string {
-    if (followUpQuestion) {
-      return `🤔 ${followUpQuestion}`;
-    }
-    
-    if (missingInfo.includes('deadline') || missingInfo.includes('due date')) {
-      return "📅 When do you need to complete these tasks? Knowing the deadline helps me prioritize better.";
-    }
-    
-    if (missingInfo.includes('priority')) {
-      return "⚡ Which of these tasks is most urgent? Let me know so I can help you prioritize.";
-    }
-    
-    if (missingInfo.includes('specifics')) {
-      return "Could you provide a bit more detail about what you'd like to accomplish? The more specific you are, the better I can help!";
-    }
-    
-    return "I want to help you effectively! Could you tell me more about what you're trying to achieve today?";
-  }
-
   async clearConversation(userId: string): Promise<void> {
     this.userContexts.delete(userId);
   }
@@ -273,14 +346,27 @@ export class SmartAssistant {
     return context.savedTasks.filter(t => !t.completed);
   }
 
-  async markTaskComplete(userId: string, taskId: string): Promise<boolean> {
+  async markTaskComplete(userId: string, taskId: string): Promise<{ success: boolean; message: string }> {
     const context = this.getUserContext(userId);
     const task = context.savedTasks.find(t => t.id === taskId);
-    if (task) {
+    
+    if (task && !task.completed) {
       task.completed = true;
-      return true;
+      
+      const remainingCount = context.savedTasks.filter(t => !t.completed).length;
+      
+      let celebrationMsg = `🎉 Great job completing "${task.title}"! `;
+      
+      if (remainingCount === 0) {
+        celebrationMsg += `You've crushed ALL your tasks today! 🏆 Take a moment to celebrate! ✨`;
+      } else {
+        celebrationMsg += `${remainingCount} task${remainingCount > 1 ? 's' : ''} remaining. ${this.getEncouragementMessage()}`;
+      }
+      
+      return { success: true, message: celebrationMsg };
     }
-    return false;
+    
+    return { success: false, message: "Task not found or already completed" };
   }
 }
 
